@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Price Alert</title>
+    <script src="https://smtpjs.com/v3/smtp.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        input, button { padding: 10px; margin: 5px 0; }
+    </style>
+</head>
+<body>
+    <h1>Stock Price Alert System</h1>
+    <label for="companyCode">Enter Company Code:</label>
+    <input type="text" id="companyCode" placeholder="e.g., NMBL">
+    <button onclick="setupAlerts()">Setup Alerts</button>
+    <p id="status"></p>
+
+    <script>
+        async function fetchCompanyData(companyCode) {
+            const response = await fetch(`https://the-value-crew.github.io/nepse-api/data/company/${companyCode}`);
+            return response.json();
+        }
+
+        async function fetchDataForYear(companyCode) {
+            const today = new Date();
+            const startDate = new Date(today.getFullYear() - 1, today.getMonth(), today.getDate());
+            const endDate = new Date(today.getTime() - 24 * 60 * 60 * 1000); // Yesterday
+            let prices = [];
+
+            let currentDate = new Date(startDate);
+            while (currentDate <= endDate) {
+                const formattedDate = currentDate.toISOString().split('T')[0];
+                try {
+                    const dailyData = await fetch(`https://the-value-crew.github.io/nepse-api/data/date/${formattedDate}`);
+                    const data = await dailyData.json();
+                    const companyData = data.find(item => item.symbol === companyCode);
+                    if (companyData) {
+                        prices.push(companyData.closing_price);
+                    }
+                } catch (error) {
+                    console.error(`Error fetching data for ${formattedDate}:`, error);
+                }
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+            return prices;
+        }
+
+        function setupAlerts() {
+            const companyCode = document.getElementById('companyCode').value;
+            if (!companyCode) {
+                document.getElementById('status').innerText = 'Please enter a company code.';
+                return;
+            }
+
+            fetchDataForYear(companyCode).then(prices => {
+                if (prices.length === 0) {
+                    document.getElementById('status').innerText = 'No data available for the company within the last year.';
+                    return;
+                }
+
+                const minPrice = Math.min(...prices);
+                const maxPrice = Math.max(...prices);
+
+                setInterval(async () => {
+                    const latestData = await fetchCompanyData(companyCode);
+                    const latestPrice = latestData.closing_price;
+
+                    if (latestPrice <= minPrice) {
+                        sendEmail(`It's time to buy ${companyCode}! The price has reached the minimum of ${minPrice}.`);
+                    } else if (latestPrice >= maxPrice) {
+                        sendEmail(`It's time to sell ${companyCode}! The price has reached the maximum of ${maxPrice}.`);
+                    }
+                }, 60000); // Check every minute
+
+                document.getElementById('status').innerText = `Alerts set up for ${companyCode}. Monitoring price changes...`;
+            }).catch(error => {
+                console.error('Error setting up alerts:', error);
+                document.getElementById('status').innerText = 'An error occurred while setting up alerts.';
+            });
+        }
+
+        function sendEmail(message) {
+            Email.send({
+                SecureToken: "682DFF91C1145AA6BAEB8567119E05CF95E448F87898FB118C98715F085A76B6035363CA16E41B623FBD15123807AFC9", // Replace with your secure token from smtpjs.com
+                To: 'sarosene53@gmail.com', // Replace with your email
+                From: "sarosene053@gmail.com",
+                Subject: "Stock Price Alert",
+                Body: message
+            }).then(
+                message => console.log(message)
+            );
+        }
+    </script>
+</body>
+</html>
